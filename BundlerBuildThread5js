@@ -1,0 +1,45 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { Hd2Error, writeJson, runNode, log } = require('./MiniCore');
+
+function buildExecutable(payload) {
+  const { bundlePath, outputDir, output } = payload;
+
+  if (!fs.existsSync(bundlePath)) {
+    throw new Hd2Error(`Bundle not found: ${bundlePath}`, 'BUNDLE_MISSING');
+  }
+
+  const stagedOutput = path.join(outputDir, 'hd2-staged.exe');
+  const configPath = path.join(outputDir, 'sea.json');
+
+  writeJson(configPath, {
+    main: bundlePath,
+    output: stagedOutput,
+    disableExperimentalSEAWarning: true,
+  });
+
+  log(`Building single executable with node --build-sea`);
+  const result = runNode([`--build-sea=${configPath}`], { cwd: outputDir });
+
+  if (result.status !== 0) {
+    const detail = (result.stderr || result.stdout || '').trim();
+    throw new Hd2Error(`SEA build failed: ${detail}`, 'SEA_BUILD_FAILED');
+  }
+
+  if (!fs.existsSync(stagedOutput)) {
+    throw new Hd2Error(`SEA build produced no output at ${stagedOutput}`, 'SEA_NO_OUTPUT');
+  }
+
+  const destination = path.resolve(output);
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(stagedOutput, destination);
+
+  return {
+    output: destination,
+    bytes: fs.statSync(destination).size,
+  };
+}
+
+module.exports = { buildExecutable };

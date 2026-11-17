@@ -1,0 +1,104 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { ensureDir, writeJson } = require('./MiniCore');
+
+const RUNTIME = `'use strict';
+(function () {
+  const __hd2NativeRequire = require;
+  const __hd2Builtins = new Set(__hd2NativeRequire('module').builtinModules);
+  const __hd2Path = __hd2NativeRequire('path');
+
+  const __hd2Modules = {
+__HD2_MODULE_MAP__
+  };
+
+  const __hd2Entry = __HD2_ENTRY__;
+
+  function __hd2Resolve(request, parent) {
+    if (request.startsWith('node:')) return request;
+    if (__hd2Builtins.has(request)) return request;
+    if (!request.startsWith('.')) return request;
+    const base = __hd2Path.resolve(__hd2Path.dirname(parent), request);
+    const candidates = [
+      base,
+      base + '.js',
+      base + '.json',
+      __hd2Path.join(base, 'index.js')
+    ];
+    for (const candidate of candidates) {
+      const id = candidate.replace(/\\\\/g, '/');
+      if (Object.prototype.hasOwnProperty.call(__hd2Modules, id)) return id;
+    }
+    return null;
+  }
+
+  const __hd2Cache = {};
+
+  function __hd2Load(id) {
+    if (__hd2Cache[id]) return __hd2Cache[id].exports;
+    const factory = __hd2Modules[id];
+    if (!factory) throw new Error('Hd2: module not found: ' + id);
+    const module = { id: id, exports: {} };
+    __hd2Cache[id] = module;
+    const nativePath = id.replace(/\\//g, __hd2Path.sep);
+    factory(
+      module,
+      module.exports,
+      function (request) {
+        const resolved = __hd2Resolve(request, nativePath);
+        if (resolved === null) {
+          throw new Error('Hd2: cannot resolve ' + request + ' from ' + id);
+        }
+        if (resolved.startsWith('node:') || __hd2Builtins.has(resolved)) {
+          return __hd2NativeRequire(resolved);
+        }
+        return __hd2Load(resolved);
+      },
+      nativePath,
+      __hd2Path.dirname(nativePath)
+    );
+    return module.exports;
+  }
+
+  __hd2Load(__hd2Entry);
+})();
+`;
+
+function emit(payload) {
+  const { modules, order, entry, outputDir, externals } = payload;
+  const byId = new Map(modules.map((module) => [module.id, module]));
+
+  const map = order.map((id) => {
+    const module = byId.get(id);
+    return (
+      `    ${JSON.stringify(id)}: function (module, exports, require, __filename, __dirname) {\n` +
+      module.source +
+      `\n    }`
+    );
+  }).join(',\n');
+
+  const code = RUNTIME
+    .replace('__HD2_MODULE_MAP__', map)
+    .replace('__HD2_ENTRY__', JSON.stringify(entry));
+
+  ensureDir(outputDir);
+  const bundlePath = path.join(outputDir, 'bundle.js');
+  fs.writeFileSync(bundlePath, code, 'utf8');
+
+  const manifest = {
+    schemaVersion: 1,
+    compiler: 'Hd2.js',
+    entry,
+    modules: modules.map((m) => ({ id: m.id, hash: m.hash, bytes: m.bytes })),
+    externals: externals || [],
+    bundleBytes: Buffer.byteLength(code, 'utf8'),
+  };
+  const manifestPath = path.join(outputDir, 'manifest.json');
+  writeJson(manifestPath, manifest);
+
+  return { bundlePath, manifestPath, code, manifest };
+}
+
+module.exports = { emit };

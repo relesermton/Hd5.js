@@ -1,0 +1,23 @@
+{
+  "name": "hd2",
+  "version": "1.0.0",
+  "description": "Hd2.js - fast JavaScript to OS application compiler",
+  "main": "main.js",
+  "bin": {
+    "hd2": "Hd2.js"
+  },
+  "scripts": {
+    "build": "node Hd2.js build",
+    "test": "node Hd2.js selftest"
+  },
+  "keywords": [
+    "compiler",
+    "bundler",
+    "sea",
+    "executable"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
